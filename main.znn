@@ -1,0 +1,72 @@
+import "std/io.znn";
+import "std/random.znn";
+import "std/box.znn";
+
+import "sdl/sdl.znn";
+import "sdl/event.znn";
+import "sdl/ttf.znn";
+import "sdl/canvas.znn";
+import "ui/ui.znn";
+import "ui/data.znn";
+import "ui/reader.znn";
+import "pretty_input.znn";
+
+[@ui_element]
+struct GagaUI {
+};
+
+void render(GagaUI*, UIContext context, rectangle* r) {
+}
+
+bool onKeyEvent(GagaUI*, UIContext context, rectangle* r, key_event* key) {
+  return true;
+}
+
+box<UIElement>!string readUIFrom(string path) {
+  mutable stream = try create_input_stream(try read_content(&try open_file_r(path)));
+  stream.add_concept_mapping<UIElement, GagaUI>("gaga_ui");
+  stream.register_ui_elems();
+  return stream.read_data<box<UIElement>>();
+}
+
+template <T>
+T orExit(expected<T, string> elem) {
+  if (!elem) {
+    printf("{elem.get_error()}\n");
+    exit(0);
+  }
+  return *move(elem);
+}
+
+
+void main() {
+  sdl_init().orExit();
+  init_random();
+  mutable uiData = UIRecord();
+  mutable uiState = UIState();
+  mutable exit = false;
+  uiData.insert("exit_callback", [&exit] { exit = true; }.box_as<UICallback>().box_as<any>());
+  mutable textures = hash_map<string, sdl_texture>();
+  const window = sdl_create_window(vec2(854, 480), "Gaga", null, true).orExit();
+  textures.insert("gaga1", sdlLoadBMP("gaga1.bmp").orExit().to_texture(&window).orExit());
+  mutable font = window.loadSDLFont("font.ttf", 10, 100).orExit();
+  const textTexture = window.make_target_texture(vec2(100, 100)).orExit();
+  mutable canvas = SDLCanvas(&window, &font, move(textures), move(textTexture));
+  const context = UIContext(&canvas, &uiData, &uiState, 0.01);
+  mutable eventsState = SDLEventsState();
+  const ui = readUIFrom("ui.txt").orExit();
+  const uiRectangle = rectangle(vec2(0, 0), window.size());
+  while (!exit) {
+    for (event : eventsState.getEvents()) {
+      switch (*event) {
+        case (quit) { return; }
+        case (key) {
+          discard ui^.onKeyEvent(context, &uiRectangle, &key);
+        }
+        default {}
+      }
+    }
+    ui^.render(context, &uiRectangle);
+    window.update();
+  }
+}
